@@ -1,0 +1,1838 @@
+#include <LiquidCrystal_I2C.h>
+
+#include "DHT.h" // Bibi für DHT11
+#include <Adafruit_Sensor.h>// Bibi für DHT11
+#define DHT22_PIN A3 // Sensor Input
+ // Es handelt sich um ein DHT11
+DHT dht22(DHT22_PIN, DHT22);  
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+
+const int SENSOR_PIN = A1; // Sensor Q05 Temperaturmesung
+//variables for the temperature sensor
+
+#define Relay3 12  // Relay Pin für Temperatursteuerung
+#define Relay2 9 // Relay Pin für Waterzufursteuerung
+#define relay  8  // Eggturner
+#define Relayv 11 // Relay Ventilator
+#define buzzer 6
+
+
+#define sensorPin A2 // Sensorpin für Water Sensor
+
+OneWire oneWire(SENSOR_PIN);         // setup a oneWire instance
+DallasTemperature tempSensor(&oneWire); // pass oneWire to DallasTemperature library
+
+
+//button commands only for button and potentiometer
+
+int pin3= 4; // sw pin
+
+const int pin1 = 3; // dt
+
+const int pin2 = 2;//clk   
+
+volatile int statePin1 = 0; // Pin 1 status
+
+volatile int statePin2 = 0; // Pin 2 status
+
+volatile int laststatePin1 = 0;
+ 
+volatile int laststatePin2 = 0;
+
+volatile unsigned long timePin1 = 0; // Time for pin 1
+
+volatile unsigned long timePin2 = 0; // Time for pin 2
+
+volatile unsigned long lasttimePin1 = 0; // last Time for pin 1
+
+volatile unsigned long lasttimePin2 = 0; // last Time for pin 2
+
+int countererror2;
+
+int countererror1;
+
+int kp=1;
+int ki=1;
+int kd=1;
+
+
+float last_kp = -100;
+
+float last_ki = -100;  // -100 remove error for display when value is 0
+
+float last_kd = -100; 
+
+
+
+//button
+
+unsigned long lastButtonPress = 0;
+
+bool buttonState = HIGH;
+
+bool buttoncheck;
+
+int buttonpressed=0;
+
+
+
+// variables for the menu
+
+int menu_activated=0;
+
+int numberofmenu=8;
+
+int checkmenu1=0;
+
+unsigned long previousMillis = 0;  // Variable to store previous time
+
+const long interval = 500;         // Interval for flashing text in menu
+
+unsigned long currentMillismenu;
+
+int checkemptyvalues=0;
+
+unsigned long previousMillis2= 0;
+
+double set_temperature = 38.75;
+double set_humidity = 50;
+int set_value = 500;
+int set_ptime = 16;
+int set_eggturner = 240;
+
+float humidity;
+double temp_read ;
+float temperature_read;
+int value = 0;
+
+
+
+int last_set_value = 0; 
+float last_set_temperature = 0;
+float last_set_humidity = 0;
+int last_set_ptime = 0;
+int last_set_eggturner = 0;
+
+unsigned long interval1_temp = 500;
+unsigned long interval2_humidity = 1000;
+unsigned long interval3_val = 1050;
+unsigned long p_time = 0;
+unsigned long interval4_eggturner = 0;
+unsigned long interval_T = 6000;
+unsigned long interval5 = 1000;
+unsigned long interval_control = 1001;
+unsigned long interval_alarm = 1000;
+
+unsigned long previous_time1 = 0;
+unsigned long previous_time2 = 0;
+unsigned long previous_time3 = 0;
+unsigned long previous_time4 = 0;
+unsigned long previous_timeT = 0;
+unsigned long previous_time5 = 0;
+unsigned long previous_time6 = 0;
+
+int max_temp = 38;
+int min_temp = 35;
+int max_hum = 55;
+int min_hum = 35;
+
+
+
+
+unsigned long previousMillisa;
+int kp_off = 1 ;
+int kp_on = 2;
+
+
+
+
+
+
+void setup() {
+  Serial.begin(9600);
+  digitalWrite(buzzer,HIGH);
+  
+  lcd.init();
+  lcd.backlight();
+  
+  dht22.begin();
+
+  lcd.clear();
+  lcd.setCursor(6,0);
+  
+  lcd.print("Rem");
+  
+  lcd.setCursor(3,1);  
+  lcd.print("production");
+  delay(3000);
+  lcd.clear();
+
+  pinMode(sensorPin, INPUT);
+  pinMode (Relay3, OUTPUT); // Relay 3 Pin als Output definieren
+  pinMode (relay, OUTPUT);// Relay für Eierdreher
+  pinMode(Relay2, OUTPUT); //Wasserpumpe$
+  pinMode(Relayv, OUTPUT); //Relay für Ventiltor
+  
+
+  pinMode(buzzer, OUTPUT);
+
+
+  tempSensor.begin();    // initialize the sensor
+
+  // BUTTON set pin
+
+  pinMode(pin3, INPUT_PULLUP);
+
+  pinMode(pin1, INPUT);
+
+  pinMode(pin2, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(pin1), handlePin1Change, CHANGE);
+
+  attachInterrupt(digitalPinToInterrupt(pin2), handlePin2Change, CHANGE);
+
+ digitalWrite(buzzer,LOW);
+
+
+}
+
+
+void handlePin1Change() {
+
+   
+
+  statePin1 = digitalRead(pin1);
+
+  timePin1 = millis(); // Record the change time on pin 1
+
+ 
+
+  //filtering annoying duplicates, both temporal and identical consecutive values, omitting zeros, lets only 1
+
+   if (timePin1 != lasttimePin1 && statePin1 != laststatePin1 ) {
+
+  if ( statePin1 == 1) {
+
+   countererror1++; }
+
+
+
+  compareStates();
+
+ 
+
+ 
+
+ lasttimePin1=timePin1;
+
+ laststatePin1=statePin1;
+
+   
+
+  }
+
+   
+
+ 
+
+}
+
+
+
+void handlePin2Change() {
+
+ 
+
+  statePin2 = digitalRead(pin2);
+
+  timePin2 = millis(); // Record the change time on pin 2
+
+ 
+
+ //filtering annoying duplicates, both temporal and identical consecutive values, omitting zeros, lets only 1
+
+  if (timePin2 != lasttimePin2 && statePin2 != laststatePin2 ) {
+
+   
+
+   if ( statePin2 == 1) {  
+
+   countererror2++; }
+
+
+
+  compareStates();
+
+
+
+   
+
+ lasttimePin2=timePin2;
+
+ laststatePin2=statePin2;
+
+  }
+
+
+
+ 
+
+}
+
+
+
+
+
+
+
+void compareStates() {
+
+
+
+ //checking the last pin, which is always 1 + checking if the pins have changed at least 1x to check the wrong direction
+
+ if (statePin2 == 1 && statePin1 == 1  && countererror1 > 0 && countererror2 > 0 ) {
+
+
+
+ 
+
+
+
+// checking if the button is not pressed, to check if the menu is preserved
+
+
+
+ if (buttonpressed == 0   ) {
+
+
+
+
+
+  //finding which direction it is facing
+
+  if (timePin2 > timePin1 ) {
+
+
+
+//restriction to positive values only for menu
+
+    if (menu_activated > 0  ) {
+
+
+
+menu_activated--;
+
+
+
+}else
+
+{
+
+menu_activated=numberofmenu;
+
+}
+
+
+
+
+
+countererror1= 0;
+
+countererror2= 0;
+
+
+
+}else
+
+  {
+
+    // limitation the number of menus
+
+   if (numberofmenu > menu_activated  ) {  
+
+
+
+     menu_activated++;
+
+   }else {
+
+menu_activated = 0;
+
+}
+
+countererror2=0;
+
+countererror1=0;
+
+}
+
+
+
+
+
+
+
+
+
+}else {
+
+if ( menu_activated == 1)  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       set_temperature = set_temperature+0.5 ;
+
+     }
+
+     else {
+
+       set_temperature = set_temperature-0.5;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+if ( menu_activated == 2 )  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       kp =  kp+1;
+
+     }
+
+     else {
+
+      kp = kp-1;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+
+
+if ( menu_activated == 3 )  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       ki = ki+1 ;
+
+     }
+
+     else {
+
+      ki = ki-1 ;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+
+
+if ( menu_activated == 4 )  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       kd = kd+1 ;
+
+     }
+
+     else {
+
+      kd = kd-1 ;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+
+if (menu_activated == 5){
+  
+  if (timePin2 > timePin1){
+    set_humidity = set_humidity+1;
+  }
+
+    else {
+      set_humidity = set_humidity-1;
+    }
+
+    countererror1=0;
+
+countererror2=0;
+}
+
+
+if ( menu_activated == 6 )  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       set_value = set_value+1 ;
+
+     }
+
+     else {
+
+      set_value = set_value -1 ;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+if ( menu_activated == 8)  {
+
+
+
+
+
+ if (timePin2 > timePin1 ) {
+
+       set_ptime = set_ptime+1 ;
+
+     }
+
+     else {
+
+       set_ptime = set_ptime -1;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+
+if ( menu_activated == 7)  {
+
+
+
+if (timePin2 > timePin1 ) {
+
+       set_eggturner = set_eggturner+1 ;
+
+     }
+
+     else {
+
+       set_eggturner = set_eggturner -1;
+
+     }
+
+
+
+     countererror1= 0;
+
+countererror2= 0;
+
+}
+
+
+}
+
+}
+
+}
+
+
+
+
+void loop() {
+ 
+  
+  unsigned long current_time = millis(); 
+
+  if (current_time - previous_time5 >= interval_alarm){
+    if (temp_read >= max_temp && kp == 1 && kd ==1){
+      digitalWrite(buzzer, HIGH);
+    } else{
+      digitalWrite(buzzer,LOW);
+    }
+    if (min_temp >= temp_read && kp== 1 && kd == 1){
+      digitalWrite(buzzer,HIGH);
+    }else{
+      digitalWrite(buzzer,LOW);
+    }
+    
+    if (min_hum >= humidity && kd == 1){
+      digitalWrite(buzzer,HIGH);
+    }else{
+      digitalWrite(buzzer,LOW);
+    }
+
+    if (ki == 1){
+      digitalWrite(Relayv,HIGH);
+    }else{
+      digitalWrite(Relayv,LOW);
+    }
+    previous_time5 = current_time;
+  } 
+
+  if ( current_time - previous_time5 >= interval5) {
+    if (kp==1){
+      digitalWrite(Relay3,HIGH);
+    
+    }else {
+      digitalWrite(Relay3,LOW);
+    }
+
+    if (kd==1){
+      digitalWrite(Relayv,HIGH);
+    
+    }else {
+      digitalWrite(Relayv,LOW);
+    }
+
+    if (kd==1){
+      digitalWrite(buzzer,HIGH);
+    
+    }else {
+      digitalWrite(buzzer,LOW);
+    }
+
+    previous_time5= current_time;
+  }
+
+  
+  
+  if (current_time - previous_time1 >= interval1_temp) {
+   tempSensor.requestTemperatures();             // send the command to get temperatures
+   temp_read = tempSensor.getTempCByIndex(0);   // Read Temp in Celcius
+   temperature_read = dht22.readTemperature();
+   if (temp_read <= set_temperature && kp==1){
+    digitalWrite(Relay3, HIGH); 
+   }
+   else{
+    digitalWrite(Relay3, LOW);
+   }
+   previous_time1 = current_time;
+  }
+  if ( current_time - previous_time2 >= interval2_humidity){
+   humidity = dht22.readHumidity();
+
+   value = analogRead(sensorPin);
+
+   previous_time2 = current_time;
+  }
+
+
+  interval4_eggturner  = set_eggturner * 60000;
+  p_time = set_ptime * 1000;
+
+  if(current_time - previous_time4 >= interval4_eggturner ){
+    digitalWrite(relay, HIGH);
+    lcd.clear();
+    lcd.print("Eggturner...");
+    delay(p_time);
+    lcd.clear();
+    digitalWrite(relay, LOW);
+    
+    previous_time4 = current_time;
+  }
+
+
+ if (millis()- previousMillisa >= 1000) {
+
+    previousMillisa = millis();
+
+   //Serial.print("PID_value:");
+    Serial.print( previousMillisa );
+
+     Serial.print(",");
+
+      //Serial.print("temp:");
+
+  Serial.print(temp_read);
+
+    Serial.print(",");
+
+//Serial.print("ref.temp.:");
+
+       Serial.print(set_temperature);
+
+        
+       Serial.print(", ");
+
+       //Serial.print("Humidity")
+       
+       Serial.print(humidity);
+       Serial.print(", ");
+       Serial.print(value);
+       Serial.print(",");
+       Serial.print(temperature_read);
+      Serial.println("");
+
+
+}
+
+
+ if ( kp >= 1){
+  kp = 1;
+ }
+ if ( kp <= 0){
+  kp = 0;
+ }
+
+ if ( ki >= 1){
+  ki = 1;
+ }
+ if ( ki <= 0){
+  ki = 0;
+ }
+
+ if ( kd >= 1){
+  kd = 1;
+ }
+ if ( kd <= 0){
+  kd = 0;
+ }
+
+
+  //menu 0
+
+ if(menu_activated == 0)
+
+ {
+
+ if (millis()- previousMillis2 >= 500) {
+
+  previousMillis2 = millis();
+
+
+
+   lcd.setCursor(0,0);
+
+  lcd.print("Temp:");
+
+  lcd.print(temp_read);
+
+  lcd.print(" C         ");
+
+ 
+
+  lcd.setCursor(0,1);
+
+  lcd.print("%H:");
+
+  lcd.print(humidity);
+
+  lcd.print("%");
+
+
+
+  last_set_temperature=0;
+
+  last_kd=-100;
+
+
+
+   }
+
+}//end of menu 0 (PID control)
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+  //check button pressed for menu
+
+   buttoncheck = digitalRead(pin3);
+
+
+
+  if ((millis() - lastButtonPress) > 50) {
+
+    if (buttoncheck != buttonState) {
+
+      buttonState = buttoncheck;
+
+
+
+      if (buttonState == LOW) {
+
+
+
+       if (buttonpressed == 0) {
+
+        if (menu_activated != 0) {
+
+        buttonpressed=1;
+
+         }
+
+        }
+
+        else {
+
+
+
+          buttonpressed=0;
+
+       
+
+        }
+
+
+
+       
+
+
+
+       lastButtonPress = millis();
+
+      }
+
+    }
+
+  }
+
+  delay(1);
+
+//end of button press
+
+ 
+
+
+
+
+
+ 
+
+//Menu-page 1 (temperature setpoint)
+
+if(menu_activated == 1)
+
+{
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+           lcd.setCursor(0,1);
+
+           lcd.print(set_temperature, 1);
+
+           lcd.print("C");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+           lcd.print(set_temperature, 1);
+
+           lcd.print("C");
+
+}}
+
+
+
+
+
+
+
+  if(set_temperature != last_set_temperature)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set  temperature:");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print(set_temperature, 1);  
+
+  lcd.print("C");
+
+}
+
+  last_set_temperature = set_temperature;
+
+ 
+
+
+
+
+
+ last_kp=0;
+ last_ki= -100;
+
+}
+
+//end of menu 1
+
+ 
+
+
+
+
+
+
+
+//Setting P - second menu
+
+if(menu_activated == 2)
+
+{
+
+
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("Status: ");
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+          lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kp);  
+
+  lcd.print("                 ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kp);  
+
+  lcd.print("                 ");
+
+}}
+
+
+
+
+
+
+
+  if(kp != last_kp)
+
+  {
+
+  lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set Status T  ");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kp);
+
+  lcd.print("                 ");
+
+  }
+
+  last_kp = kp;
+
+ 
+
+
+
+  //it will be possible to display menu 0 again
+
+ last_set_temperature=0;
+
+ last_ki=-100;
+
+}
+
+//end - menu 2
+
+
+
+
+
+
+
+
+
+//Setting I - 3 menu
+
+if(menu_activated == 3)
+
+{
+
+ 
+
+
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("Status: ");
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+          lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(ki);  
+
+  lcd.print("                 ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(ki);  
+
+  lcd.print("                 ");
+
+}}
+
+
+
+  if(ki != last_ki  )
+
+  {
+
+
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set Status V  ");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(ki);  
+
+  lcd.print("                 ");
+
+
+
+  }
+
+  last_ki = ki;
+
+ 
+
+ last_set_temperature=0;
+
+ last_kp=0;
+
+ last_kd=-100;
+
+}
+
+
+
+//end - menu 3
+
+
+
+
+
+
+
+
+
+//Setting D value - 4 menu
+
+if(menu_activated == 4)
+
+{
+
+
+
+  if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("Status: ");
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+          lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kd);  
+
+  lcd.print("                 ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kd);  
+
+  lcd.print("                 ");
+
+}}
+
+
+
+
+
+
+
+  if(kd != last_kd)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set Status B ");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print("Status: ");
+
+  lcd.print(kd);  
+
+  lcd.print("                 ");
+
+  }
+
+  last_kd = kd;
+
+  last_set_temperature=0;
+
+  last_kp=0;
+
+  last_set_humidity = -100;
+
+  last_ki=-100;
+
+
+ 
+
+}
+
+
+
+//end menu 4
+
+
+
+//Menu-page  5 (humidity setpoint)
+
+if(menu_activated == 5)
+
+{
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+           lcd.setCursor(0,1);
+
+           lcd.print(set_humidity, 1);
+
+           lcd.print("%");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+           lcd.print(set_humidity, 1);
+
+           lcd.print("%");
+
+}}
+
+
+
+
+
+
+
+  if(set_humidity != last_set_humidity)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set  humidity:");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print(set_humidity, 1);  
+
+  lcd.print("%");
+
+}
+
+  last_set_humidity = set_humidity;
+
+  last_kd = 0;
+
+  last_set_temperature=0;
+
+  last_kp=0;
+  last_ki = 0;
+  last_set_value = -100;
+ 
+
+ 
+
+
+
+
+
+ 
+
+}
+
+//end of menu 5
+
+
+//Menu-page 6 (value setpoint)
+
+if(menu_activated == 6)
+
+{
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+           lcd.setCursor(0,1);
+
+           lcd.print(value, 1);
+
+           lcd.print(" ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+           lcd.print(value, 1);
+
+           lcd.print(" ");
+
+}}
+
+
+
+
+
+
+
+  if(set_value != last_set_value)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Value:");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print(value, 1); 
+ 
+
+  lcd.print(" ");
+
+}
+
+  last_set_value = set_value;
+
+
+
+  last_kp=0;
+  last_set_humidity = 0;
+  last_set_eggturner= -100;
+
+  
+
+}
+
+//end of menu 6
+
+
+
+//Menu-page 7 (Eierdreher setpoint)
+
+if(menu_activated == 7)
+
+{
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+           lcd.setCursor(0,1);
+
+           lcd.print(set_eggturner, 1);
+
+           lcd.print(" min ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+           lcd.print(set_eggturner, 1);
+
+           lcd.print(" min ");
+
+}}
+
+
+
+
+
+
+
+  if(set_eggturner != last_set_eggturner)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set  period time:");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print(set_eggturner, 1);  
+
+  lcd.print(" min ");
+
+}
+
+  last_set_eggturner = set_eggturner;
+
+ 
+  
+  last_set_value = 0;
+  last_set_ptime = -100;
+
+  
+
+}
+
+//end of menu 7
+
+
+//Menu-page 8 (Eierdreher setpoint)
+
+if(menu_activated == 8)
+
+{
+
+
+
+
+
+if(buttonpressed == 1)
+
+  {
+
+   currentMillismenu = millis();
+
+    if (currentMillismenu - previousMillis >= interval) {
+
+      previousMillis = currentMillismenu;
+
+//menu flashing when pressed, editing activation
+
+     if(checkmenu1 == 0){
+
+       lcd.setCursor(0,1);
+
+        lcd.print("                ");
+
+       
+
+        checkmenu1=1;
+
+        checkemptyvalues=1;
+
+         }else {
+
+         
+
+           lcd.setCursor(0,1);
+
+           lcd.print(set_ptime, 1);
+
+           lcd.print(" sek ");
+
+         checkmenu1=0;
+
+          checkemptyvalues=0;
+
+ 
+
+       
+
+  }}
+
+    }else{
+
+
+
+// checking for an empty value after pressing the button
+
+if(checkemptyvalues == 1)
+
+  {
+
+
+
+lcd.setCursor(0,1);
+
+           lcd.print(set_ptime, 1);
+
+           lcd.print(" sek ");
+
+}}
+
+
+
+
+
+
+
+  if(set_ptime != last_set_ptime)
+
+  {
+
+    lcd.clear();
+
+  lcd.setCursor(0,0);
+
+  lcd.print("Set cyclo time:");    
+
+  lcd.setCursor(0,1);
+
+  lcd.print(set_ptime, 1);  
+
+  lcd.print(" sek ");
+
+}
+
+  last_set_ptime = set_ptime;
+
+ 
+  
+  last_set_eggturner=0;
+
+
+}
+
+}
+
+//end of menu 8
