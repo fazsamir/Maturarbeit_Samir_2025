@@ -1,1 +1,55 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Listen für die Daten
+temperature = []
+time_index = []
+#set_temperature = []
+humidity = []
+
+
+
+# Einlesen der Daten aus der TXT-Datei
+with open(r ****Hier Pfad zum Dokument. Achtung!!!! Datei muss .txt und Tabstopp-Getrennt sein, 'r') as txtfile:
+    for line in txtfile:
+        # Entfernen von Leerzeichen und Zeilenumbrüchen, dann Aufteilen nach Tabulator
+        row = line.strip().split('\t')
+        if len(row) == 6:
+            try:
+                temp_value = float(row[4]) # In welchem Spalt befindet sich deine Daten? Achtung zählung begint bei 0
+                #set_temp = float(row[1])
+                time_value = int(row[5])
+                hum_value = float(row[2])
+                
+                # Werte den Listen hinzufügen
+                temperature.append(temp_value)
+                #set_temperature.append(set_temp)
+                time_index.append(time_value)
+               
+                humidity.append(hum_value)
+            except ValueError as e:
+                print(f"Ungültige Zeile übersprungen: {row}, Fehler: {e}")
+
+# Sicherstellen, dass Daten eingelesen wurden
+if not temperature or not humidity or not time_index : #  or not *** , set_temperature, value 
+    print("Es wurden keine Daten eingelesen. Überprüfen Sie die Datei und das Trennzeichen.")
+else:
+    # Erstellen des Diagramms
+    plt.figure(figsize=(10, 5))
+    plt.plot(time_index, temperature, color='r', label="Temperatur (°C)")
+    plt.plot(time_index, humidity, color= 'b', linestyle='-', label='Luftfeuchtigkeit (%)' )
+    plt.axhline(y = 50, color= 'b', linestyle='--', label='eingst. Luftf. (%)' )
+    #plt.plot(time_index, set_temperature, color='r', linestyle='--', label="Eing. Temperatur")
+    #plt.axvline(x = 0, linestyle= '--', color= 'b', label= 'Phasenübergang')
+    #plt.axvline(x = 353, linestyle= '--', color= 'b')
+    #plt.axvline(x = 1628, linestyle= '--', color= 'b')
+    #plt.axvline(x = 2360, linestyle= '--', color= 'b')
+    #plt.axvline(x = 6534, linestyle= '--', color= 'b')
+    
+    plt.xlabel('Zeit t (s)')
+    plt.ylabel('Temperatur T in (°C) & Luftfeuchtigkeit H in (%)') #Diese Zeile je nach Diagramm anpassen
+    plt.title('Temperatur & Luftfeuchtigkeit über Zeit')
+    plt.legend()
+    plt.grid()
+    plt.show()
 
